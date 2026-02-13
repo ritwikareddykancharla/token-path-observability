@@ -1,0 +1,119 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: token-path-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - token-path-network
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: token-path-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - token-path-network
+
+  vllm-exporter:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.exporter
+    container_name: token-path-vllm-exporter
+    ports:
+      - "${VLLM_EXPORTER_PORT:-8000}:8000"
+    environment:
+      - VLLM_ENDPOINT=${VLLM_ENDPOINT:-http://host.docker.internal:8000}
+      - EXPORTER_PORT_VLLM=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - token-path-network
+    profiles:
+      - vllm
+
+  tgi-exporter:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.exporter
+    container_name: token-path-tgi-exporter
+    ports:
+      - "${TGI_EXPORTER_PORT:-8001}:8001"
+    environment:
+      - TGI_ENDPOINT=${TGI_ENDPOINT:-http://host.docker.internal:8080}
+      - EXPORTER_PORT_TGI=8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    entrypoint: ["python", "-m", "exporters.tgi_exporter.exporter"]
+    restart: unless-stopped
+    networks:
+      - token-path-network
+    profiles:
+      - tgi
+
+  gpu-exporter:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gpu
+    container_name: token-path-gpu-exporter
+    ports:
+      - "${GPU_EXPORTER_PORT:-9400}:9400"
+    environment:
+      - EXPORTER_PORT_GPU=9400
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - token-path-network
+    profiles:
+      - gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  token-path-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

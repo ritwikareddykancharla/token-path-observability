@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY exporters/ ./exporters/
+COPY pyproject.toml .
+
+ENV PYTHONUNBUFFERED=1
+ENV LOG_LEVEL=INFO
+
+EXPOSE 8000 8001
+
+CMD ["python", "-m", "exporters.vllm_exporter.exporter"]
