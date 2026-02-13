@@ -1,0 +1,168 @@
+groups:
+  - name: llm_token_path_alerts
+    interval: 30s
+    rules:
+      - alert: HighTTFT
+        expr: |
+          histogram_quantile(0.99, sum(rate(vllm_ttft_seconds_bucket[5m])) by (le, model)) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Time-to-First-Token detected"
+          description: "P99 TTFT for model {{ $labels.model }} is {{ $value | humanizeDuration }}. Users may perceive significant lag."
+
+      - alert: CriticalTTFT
+        expr: |
+          histogram_quantile(0.99, sum(rate(vllm_ttft_seconds_bucket[5m])) by (le, model)) > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical Time-to-First-Token"
+          description: "P99 TTFT for model {{ $labels.model }} is {{ $value | humanizeDuration }}. Immediate investigation required."
+
+      - alert: HighITL
+        expr: |
+          histogram_quantile(0.99, sum(rate(vllm_itl_seconds_bucket[5m])) by (le, model)) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Inter-Token Latency detected"
+          description: "P99 ITL for model {{ $labels.model }} is {{ $value | humanizeDuration }}. Token streaming may appear choppy."
+
+      - alert: CriticalITL
+        expr: |
+          histogram_quantile(0.99, sum(rate(vllm_itl_seconds_bucket[5m])) by (le, model)) > 0.5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical Inter-Token Latency"
+          description: "P99 ITL for model {{ $labels.model }} is {{ $value | humanizeDuration }}. Token generation is severely impacted."
+
+      - alert: LongQueueLength
+        expr: vllm_queue_length > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Long request queue detected"
+          description: "Queue length for model {{ $labels.model }} is {{ $value }}. Consider scaling up or optimizing batch size."
+
+      - alert: VeryLongQueueLength
+        expr: vllm_queue_length > 100
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Very long request queue"
+          description: "Queue length for model {{ $labels.model }} is {{ $value }}. Requests are backing up significantly."
+
+      - alert: HighKVCachUsage
+        expr: vllm_kv_cache_usage_ratio > 0.9
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High KV Cache usage"
+          description: "KV Cache usage for model {{ $labels.model }} is {{ $value | humanizePercentage }}. May cause preemptions."
+
+      - alert: HighPreemptionRate
+        expr: rate(vllm_num_preempted_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request preemption rate"
+          description: "Preemption rate for model {{ $labels.model }} is {{ $value }}/s. Consider reducing batch size or adding memory."
+
+  - name: gpu_alerts
+    interval: 30s
+    rules:
+      - alert: MemoryBound
+        expr: gpu_memory_bound_flag == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU is memory bound"
+          description: "GPU {{ $labels.gpu_id }} ({{ $labels.gpu_name }}) is memory bound. High VRAM usage with low compute utilization."
+
+      - alert: GPUMemoryExhaustion
+        expr: gpu_vram_utilization_ratio > 0.95
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU memory nearly exhausted"
+          description: "GPU {{ $labels.gpu_id }} VRAM usage is {{ $value | humanizePercentage }}. OOM errors likely."
+
+      - alert: HighGPUTemperature
+        expr: gpu_temperature_celsius > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GPU temperature"
+          description: "GPU {{ $labels.gpu_id }} temperature is {{ $value }}°C. Check cooling."
+
+      - alert: CriticalGPUTemperature
+        expr: gpu_temperature_celsius > 95
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical GPU temperature"
+          description: "GPU {{ $labels.gpu_id }} temperature is {{ $value }}°C. Thermal throttling or shutdown imminent."
+
+      - alert: HighPowerDraw
+        expr: gpu_power_utilization_ratio > 0.95
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GPU power draw"
+          description: "GPU {{ $labels.gpu_id }} is at {{ $value | humanizePercentage }} of power limit."
+
+  - name: tgi_alerts
+    interval: 30s
+    rules:
+      - alert: HighTGITTFT
+        expr: |
+          histogram_quantile(0.99, sum(rate(tgi_ttft_seconds_bucket[5m])) by (le, model)) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High TGI Time-to-First-Token"
+          description: "P99 TTFT for TGI model {{ $labels.model }} is {{ $value | humanizeDuration }}."
+
+      - alert: HighTGIITL
+        expr: |
+          histogram_quantile(0.99, sum(rate(tgi_itl_seconds_bucket[5m])) by (le, model)) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High TGI Inter-Token Latency"
+          description: "P99 ITL for TGI model {{ $labels.model }} is {{ $value | humanizeDuration }}."
+
+      - alert: TGIValidationErrors
+        expr: rate(tgi_validation_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TGI validation errors detected"
+          description: "Validation error rate for model {{ $labels.model }} is {{ $value }}/s."
+
+      - alert: TGIInferencerErrors
+        expr: rate(tgi_inferencer_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TGI inferencer errors detected"
+          description: "Inferencer error rate for model {{ $labels.model }} is {{ $value }}/s. Check model health."
