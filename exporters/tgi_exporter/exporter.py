@@ -124,7 +124,7 @@ class TGIExporter:
         return value if isinstance(value, (int, float)) else default
 
     def _extract_metric_with_labels(
-        self, metrics: dict[str, Any], metric_name: str, label_filter: dict[str, str] = None
+        self, metrics: dict[str, Any], metric_name: str, label_filter: dict[str, str] | None = None
     ) -> list[dict[str, Any]]:
         result = []
         values = metrics.get(metric_name, [])
